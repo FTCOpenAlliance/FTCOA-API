@@ -1,4 +1,3 @@
-
 var src_default = {
   async fetch(request, env) {
     const db = env.ftcoatestdb;
@@ -7,8 +6,11 @@ var src_default = {
 
     let isQueryStringValid = false
 
+    // DEFAULT RESPONSE
     let responseString = "Error 404: The resource specified cannot be found."
 
+
+    // RESPONSE FOR /teamsSimple
     if (queryString == "/teamsSimple") {
 
       isQueryStringValid = true
@@ -21,6 +23,8 @@ var src_default = {
 
     }
 
+
+    // RESPONSE FOR /teamLinks
     if (queryString == "/teamLinks") {
 
       isQueryStringValid = true
@@ -33,6 +37,8 @@ var src_default = {
 
     }
 
+
+
     return new Response(responseString, {
       headers: {
         "content-type": isQueryStringValid ? "application/json" : "text/html"
@@ -41,6 +47,7 @@ var src_default = {
     });
   }
 };
+
 export {
   src_default as default
 };
