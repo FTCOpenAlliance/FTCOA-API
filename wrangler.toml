@@ -1,0 +1,9 @@
+name = "ftcoa-db"
+main = "src/src/index.js"
+workers_dev = true
+compatibility_date = "2023-08-23"
+
+[[d1_databases]]
+binding = "ftcoatestdb"
+database_id = "33ea40db-f818-466e-acf0-6a7bed8fa401"
+database_name = "D1-ftcoatestdb"
