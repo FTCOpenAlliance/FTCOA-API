@@ -10,27 +10,35 @@ router.debug()
 
 router.cors()
 
-router.get('/hello', async () => {
+router.get('/', async () => {
     return new Response(`
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,
       {headers: new Headers({"Content-Type": "text/html"})})
 })
 
-router.get('/teams/listSimple', async () => {
+router.get('/teams', async () => {
 
     let data = await db.prepare("SELECT * FROM Teams").run()
 
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 })
 
-router.get('/teams/:teamnumber/simple', async ({ req }) => {
+router.get('/teams/:teamnumber', async ({ req }) => {
 
     let data = await db.prepare("SELECT * FROM Teams WHERE TeamNumber IS " + req.params.teamnumber).run()
 
     if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
+    
+    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 
-    console.log(data)
+})
+
+router.get('/teams/:teamnumber/links', async ({ req }) => {
+
+    let data = await db.prepare("SELECT * FROM TeamLinks WHERE TeamNumber IS " + req.params.teamnumber).run()
+
+    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
 
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 
