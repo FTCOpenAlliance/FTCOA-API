@@ -29,7 +29,7 @@ router.get('/teams/:teamnumber', async ({ req }) => {
     let data = await db.prepare("SELECT * FROM Teams WHERE TeamNumber IS " + req.params.teamnumber).run()
 
     if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-    
+
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 
 })
@@ -42,6 +42,13 @@ router.get('/teams/:teamnumber/links', async ({ req }) => {
 
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 
+})
+
+router.get('/internal/teamListData', async () => {
+
+    let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber").run()
+
+    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 })
 
 export default {
