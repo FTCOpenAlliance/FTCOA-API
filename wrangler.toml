@@ -1,5 +1,5 @@
 name = "ftcoa-db"
-main = "src/src/index.js"
+main = "src/index.js"
 workers_dev = true
 compatibility_date = "2023-08-23"
 
