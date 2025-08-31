@@ -78,7 +78,7 @@ app.post('/internal/formSubmission', async (c) => {
 
 export default {
     async fetch(request, env, ctx) {
-        db = env.ftcoatestdb
+        db = env.FTCOA_MAIN_DB
         return app.fetch(request, env, ctx)
     }
 }
