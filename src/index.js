@@ -6,6 +6,8 @@ let JSONHeader = new Headers({"Content-Type": "application/json"})
 
 let db
 
+const arrayData = ['materials', 'products', 'systems', 'odometry', 'sensors', 'codetools', 'vision']
+
 app.get('/', async () => {
     return new Response(`
       <h1>Hello, World!</h1>
@@ -22,7 +24,7 @@ app.get('/teams', async () => {
     
 app.get('/teams/:teamnumber', async (c) => {
     
-    let data = await db.prepare("SELECT * FROM Teams WHERE TeamNumber IS ? LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber")
+    let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber WHERE Teams.TeamNumber IS ?")
     .bind(c.req.param('teamnumber'))
     .run()
     
@@ -34,21 +36,29 @@ app.get('/teams/:teamnumber', async (c) => {
 
 app.get('/teams/:teamnumber/all', async (c) => {
 
-    if (isNaN(formData.teamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
+    if (isNaN(c.req.param('teamnumber'))) {return new Response('Team Number Invalid.', {status: 400})}
     
     let data = await db.prepare(`
-        SELECT * FROM Teams WHERE TeamNumber IS ?
+        SELECT * FROM Teams
         LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
         LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
         LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
         LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
         LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
+        WHERE Teams.TeamNumber IS ?
         `)
     .bind(c.req.param('teamnumber'))
     .run()
     
     if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-    
+
+    //Parse Array Data
+    for (const key in data.results[0]) {
+        if (arrayData.includes(key.toLowerCase())) {
+            data.results[0][key] = JSON.parse(data.results[0][key])
+        }
+    }
+
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
     
 })
@@ -56,8 +66,21 @@ app.get('/teams/:teamnumber/all', async (c) => {
 app.post('/internal/formSubmission', async (c) => {
     
     let formData = await c.req.json()
+
+    console.log(formData)
     
     if (isNaN(formData.teamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
+
+    //Serialize Arrays
+    for (const key in formData) {
+        if (!arrayData.includes(key.toLowerCase())) {continue}
+        if (!Array.isArray(formData[key])) {return new Response(`Field ${key} is not an array.`, {status: 400})}
+        try {
+            formData[key] = JSON.stringify(formData[key])
+        } catch (e) {
+            return new Response(`Serialization failed for field ${key}`, {status: 400})
+        }
+    }
 
     try {
         //Team Identification
