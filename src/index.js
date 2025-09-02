@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 
 const app = new Hono()
 
@@ -6,7 +7,21 @@ let JSONHeader = new Headers({"Content-Type": "application/json"})
 
 let db
 
-const arrayData = ['materials', 'products', 'systems', 'odometry', 'sensors', 'codetools', 'vision']
+const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
+
+app.use(
+  '/teams/*',
+  cors()
+)
+
+app.use(
+  '/internal/*',
+  cors({
+    origin: 'https://ftcopenalliance.org/',
+    allowMethods: ['POST', 'GET'],
+    exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
+  })
+)
 
 app.get('/', async () => {
     return new Response(`
@@ -54,7 +69,7 @@ app.get('/teams/:teamnumber/all', async (c) => {
 
     //Parse Array Data
     for (const key in data.results[0]) {
-        if (arrayData.includes(key.toLowerCase())) {
+        if (arrayData.includes(key)) {
             data.results[0][key] = JSON.parse(data.results[0][key])
         }
     }
@@ -66,14 +81,12 @@ app.get('/teams/:teamnumber/all', async (c) => {
 app.post('/internal/formSubmission', async (c) => {
     
     let formData = await c.req.json()
-
-    console.log(formData)
     
-    if (isNaN(formData.teamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
+    if (isNaN(formData.TeamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
 
     //Serialize Arrays
     for (const key in formData) {
-        if (!arrayData.includes(key.toLowerCase())) {continue}
+        if (!arrayData.includes(key)) {continue}
         if (!Array.isArray(formData[key])) {return new Response(`Field ${key} is not an array.`, {status: 400})}
         try {
             formData[key] = JSON.stringify(formData[key])
@@ -85,35 +98,35 @@ app.post('/internal/formSubmission', async (c) => {
     try {
         //Team Identification
         await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamNumber) VALUES (?, ?)")
-        .bind(formData.teamName, formData.teamNumber)
+        .bind(formData.TeamName, formData.TeamNumber)
         .run()
         
         //Team Links
         await db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamNumber, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.teamNumber, (formData.buildThread || null), (formData.cadLink || null), (formData.codeLink || null), (formData.photoLink || null), (formData.videoLink || null), (formData.teamWebsite || null))
+        .bind(formData.TeamNumber, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.teamWebsite || null))
         .run()
 
         //Team Info
         await db.prepare("INSERT OR REPLACE INTO TeamInfo (TeamNumber, RookieYear, TeamMembers, Mentors, TeamType, MeetingHours, Budget, Workspace, Sponsors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.teamNumber, (formData.rookieYear || null), (formData.teamMembers || null), (formData.mentors || null), (formData.teamType || null), (formData.meetingHours || null), (formData.budget || null), (formData.workspace || null), (formData.sponsors || null))
+        .bind(formData.TeamNumber, (formData.RookieYear || null), (formData.TeamMembers || null), (formData.Mentors || null), (formData.TeamType || null), (formData.MeetingHours || null), (formData.Budget || null), (formData.Workspace || null), (formData.Sponsors || null))
         .run()
 
         //Robot Info
         await db.prepare("INSERT OR REPLACE INTO RobotInfo (TeamNumber, Drivetrain, Materials, Products, Systems, Odometry, Sensors) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.teamNumber, (formData.drivetrain || null), (formData.materials || null), (formData.products || null), (formData.systems || null), (formData.odometry || null), (formData.sensors || null))
+        .bind(formData.TeamNumber, (formData.Drivetrain || null), (formData.Materials || null), (formData.Products || null), (formData.Systems || null), (formData.Odometry || null), (formData.Sensors || null))
         .run()
 
         //Code Info
         await db.prepare("INSERT OR REPLACE INTO CodeInfo (TeamNumber, CodeLang, CodeEnv, CodeTools, Vision) VALUES (?, ?, ?, ?, ?)")
-        .bind(formData.teamNumber, (formData.codeLang || null), (formData.codeEnv || null), (formData.codeTools || null), (formData.vision || null))
+        .bind(formData.TeamNumber, (formData.CodeLang || null), (formData.CodeEnv || null), (formData.CodeTools || null), (formData.Vision || null))
         .run()
 
         //Free Response
         await db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamNumber, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.teamNumber, (formData.uniqueFeatures || null), (formData.outreach || null), (formData.codeAdvantage || null), (formData.competitions || null), (formData.teamStrategy || null), (formData.gameStrategy || null), (formData.designProcess || null))
+        .bind(formData.TeamNumber, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
 
-        return new Response(`Updated Data for team ${formData.teamNumber}`, {status: 200})
+        return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
         
     } catch (e) {
         console.log(e)
