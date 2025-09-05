@@ -13,9 +13,8 @@ const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'C
 app.use(
   '/teams/*',
   cors({
-    origin: ['*'],
+    origin: (origin, c) => {return origin},
     allowMethods: ['GET'],
-    exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
   })
 )
 
