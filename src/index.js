@@ -33,7 +33,6 @@ app.use('/internal/*', async (c, next) => {
 })
 
 app.get('/', async (c) => {
-    console.log(c.env.CORS_ORIGIN.list)
     return new Response(`
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,
