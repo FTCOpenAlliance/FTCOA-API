@@ -13,7 +13,7 @@ const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'C
 app.use(
   '/teams/*',
   cors({
-    origin: '*',
+    origin: ['*'],
     allowMethods: ['GET'],
     exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
   })
@@ -21,16 +21,19 @@ app.use(
 
 app.use('/internal/*', async (c, next) => {
   const corsMiddlewareHandler = cors({
-    origin: c.env.CORS_ORIGIN.list,
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    origin: (origin, c) => {
+      return origin.endsWith('.ftcopenalliance.org') || origin.endsWith('.ftcopenalliance.pages.dev')
+        ? origin
+        : c.env.CORS_ORIGIN
+    },
+    allowMethods: ['GET', 'POST'],
     exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
   })
   return corsMiddlewareHandler(c, next)
 })
 
 app.get('/', async (c) => {
-    console.log(env(c))
+    console.log(c.env.CORS_ORIGIN.list)
     return new Response(`
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,

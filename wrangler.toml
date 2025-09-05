@@ -4,10 +4,10 @@ workers_dev = true
 compatibility_date = "2023-08-23"
 
 [vars]
-CORS_ORIGIN = {list = ["https://*.ftcopenalliance.org", "https://*.ftcopenalliance.pages.dev"]}
+CORS_ORIGIN = "https://ftcopenalliance.org"
 
 [env.dev.vars]
-CORS_ORIGIN = {list = ["*"]}
+CORS_ORIGIN = "http://localhost:3000"
 
 [[d1_databases]]
 binding = "FTCOA_MAIN_DB"
