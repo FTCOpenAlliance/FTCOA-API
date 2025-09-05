@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { env } from 'hono/adapter'
 import { cors } from 'hono/cors'
 
 const app = new Hono()
@@ -11,19 +12,25 @@ const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'C
 
 app.use(
   '/teams/*',
-  cors()
-)
-
-app.use(
-  '/internal/*',
   cors({
-    origin: 'https://ftcopenalliance.org/',
-    allowMethods: ['POST', 'GET'],
+    origin: '*',
+    allowMethods: ['GET'],
     exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
   })
 )
 
-app.get('/', async () => {
+app.use('/internal/*', async (c, next) => {
+  const corsMiddlewareHandler = cors({
+    origin: c.env.CORS_ORIGIN,
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
+  })
+  return corsMiddlewareHandler(c, next)
+})
+
+app.get('/', async (c) => {
+    console.log(env(c))
     return new Response(`
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,
@@ -78,9 +85,25 @@ app.get('/teams/:teamnumber/all', async (c) => {
     
 })
 
+app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
+    let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamNumber IS ?)")
+    .bind(c.req.param('teamnumber'))
+    .run()
+
+    let exists = Object.values(data.results[0])[0] == 1
+    
+    return new Response(`{"PIIExists": ${exists}}`, {headers: JSONHeader})
+})
+
 app.post('/internal/formSubmission', async (c) => {
     
-    let formData = await c.req.json()
+    let formData
+
+    try {
+        formData = await c.req.json()
+    } catch (e) {
+        return new Response('Input is Invalid JSON.', {status: 400})
+    }
     
     if (isNaN(formData.TeamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
 
@@ -100,10 +123,14 @@ app.post('/internal/formSubmission', async (c) => {
         await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamNumber) VALUES (?, ?)")
         .bind(formData.TeamName, formData.TeamNumber)
         .run()
+
+        await db.prepare("INSERT OR IGNORE INTO TeamPII (TeamNumber, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
+        .bind(formData.TeamNumber, (formData.ContactEmail || null), (formData.ShipAddress || null))
+        .run()
         
         //Team Links
         await db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamNumber, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.teamWebsite || null))
+        .bind(formData.TeamNumber, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.TeamWebsite || null))
         .run()
 
         //Team Info
