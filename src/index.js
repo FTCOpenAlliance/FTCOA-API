@@ -21,7 +21,7 @@ app.use(
 
 app.use('/internal/*', async (c, next) => {
   const corsMiddlewareHandler = cors({
-    origin: c.env.CORS_ORIGIN,
+    origin: c.env.CORS_ORIGIN.list,
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
