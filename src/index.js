@@ -8,6 +8,8 @@ let JSONHeader = new Headers({"Content-Type": "application/json"})
 
 let db
 
+let archive
+
 const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
 
 app.use(
@@ -96,9 +98,34 @@ app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
     return new Response(`{"PIIExists": ${exists}}`, {headers: JSONHeader})
 })
 
+app.get('/internal/getArchiveList', async (c) => {
+
+    let data = await archive.list()
+
+    let returnData = []
+
+    try {
+        data.objects.forEach(object => {
+            returnData.push({
+                Name: object.key,
+                Tag: object.httpEtag,
+                Size: object.size,
+                SizeKB: (object.size / 1000),
+                Timestamp: object.uploaded
+            })
+        });
+    } catch (error) {
+        return new Response(`Failed to fetch archive list.`, {status: 400})
+    }
+
+    return new Response(JSON.stringify(returnData), {headers: JSONHeader})
+
+})
+
 app.post('/internal/formSubmission', async (c) => {
     
     let formData
+    let teamLocation
 
     try {
         formData = await c.req.json()
@@ -120,9 +147,20 @@ app.post('/internal/formSubmission', async (c) => {
     }
 
     try {
+        
+        let scoutData = await fetch(`https://api.ftcscout.org/rest/v1/teams/${formData.TeamNumber}`)
+        let teamData = await scoutData.json()
+
+        teamLocation = [teamData.city, teamData.state, teamData.country].join(", ")
+
+    } catch (error) {
+        teamLocation = null
+    }
+
+    try {
         //Team Identification
-        await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamNumber) VALUES (?, ?)")
-        .bind(formData.TeamName, formData.TeamNumber)
+        await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamNumber, Location) VALUES (?, ?, ?)")
+        .bind(formData.TeamName, formData.TeamNumber, teamLocation || null)
         .run()
 
         await db.prepare("INSERT OR IGNORE INTO TeamPII (TeamNumber, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
@@ -166,6 +204,7 @@ app.post('/internal/formSubmission', async (c) => {
 export default {
     async fetch(request, env, ctx) {
         db = env.FTCOA_MAIN_DB
+        archive = env.FTCOA_ARCHIVE
         return app.fetch(request, env, ctx)
     }
 }
