@@ -12,6 +12,12 @@ let archive
 
 const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
 
+const statsSchema = {
+    TeamInfo: ['TeamType', 'Budget', 'Workspace', 'Sponsors'],
+    RobotInfo: ['Drivetrain', 'Materials', 'Products', 'Systems', 'Sensors', 'Odometry'],
+    CodeInfo: ['CodeLang', 'CodeEnv', 'CodeTools', 'Vision']
+}
+
 app.use(
   '/teams/*',
   cors({
@@ -42,7 +48,11 @@ app.get('/', async (c) => {
     
 app.get('/teams', async () => {
     
-    let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber").run()
+    let data = await db.prepare(`
+        SELECT Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
+        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
+        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
+        `).run()
     
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
 })
@@ -59,17 +69,30 @@ app.get('/teams/:teamnumber', async (c) => {
     
 })
 
+app.get('/teams/:teamnumber/allAwards', async (c) => {
+    
+    let data = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
+    .bind(c.req.param('teamnumber'))
+    .run()
+    
+    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
+    
+    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
+    
+})
+
 app.get('/teams/:teamnumber/all', async (c) => {
 
     if (isNaN(c.req.param('teamnumber'))) {return new Response('Team Number Invalid.', {status: 400})}
     
     let data = await db.prepare(`
-        SELECT * FROM Teams
+        SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
         LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
         LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
         LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
         LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
         LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
+        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
         WHERE Teams.TeamNumber IS ?
         `)
     .bind(c.req.param('teamnumber'))
@@ -117,6 +140,72 @@ app.get('/internal/getArchiveList', async (c) => {
     } catch (error) {
         return new Response(`Failed to fetch archive list.`, {status: 400})
     }
+
+    return new Response(JSON.stringify(returnData), {headers: JSONHeader})
+
+})
+
+app.get('/internal/getTeamStats', async (c) => {
+
+    let uncountedData = {}
+
+    let returnData = {}
+
+    let numTeams = 0
+
+    //Loop through the tables specified in the JSON Object
+    for (const table of Object.keys(statsSchema)) { 
+
+        //Get the list of columns for the current table
+        let columnNames = statsSchema[table]
+
+        //Make a new empty array for each column in both objects.
+        columnNames.forEach((column) => {
+            uncountedData[column] = []
+            returnData[column] = []
+        })
+
+        //DB Query
+        let dbData = await db.prepare(`SELECT ${columnNames.join(', ')} FROM ${table}`).run()
+
+        numTeams = dbData.results.length
+
+        //For every column of every entry, check if it is an array.
+        //If it is, add every element to the respective array.
+        //Otherwise, simply add the value to the array directly.
+        dbData.results.forEach((entry) => {
+            columnNames.forEach((column) => {
+                try {
+                    if (Array.isArray(JSON.parse(entry[column]))) {
+                        JSON.parse(entry[column]).forEach((option) => {
+                            uncountedData[column].push(option)
+                        })
+                    }
+                } catch (error) {
+                    uncountedData[column].push(entry[column])
+                }
+            })
+        })
+    }
+
+    //Loop over every statistic
+    Object.keys(uncountedData).forEach((stat) => {
+
+        //For every unique statistic, add an object to the results array that contains it's name and count.
+        //(Formatted for Apache ECharts)
+        ([...new Set(uncountedData[stat])]).forEach((uniqueAnswer) => {
+            returnData[stat].push(
+                {
+                    name: uniqueAnswer,
+                    value: uncountedData[stat].filter(x => x === uniqueAnswer).length
+                }
+                    
+            )
+        })
+
+    })
+
+    returnData.NumTeams = numTeams
 
     return new Response(JSON.stringify(returnData), {headers: JSONHeader})
 
