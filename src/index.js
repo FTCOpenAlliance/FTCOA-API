@@ -7,8 +7,8 @@ const app = new Hono()
 let JSONHeader = new Headers({"Content-Type": "application/json"})
 
 let db
-
 let archive
+let flags
 
 const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
 
@@ -17,6 +17,19 @@ const statsSchema = {
     RobotInfo: ['Drivetrain', 'Materials', 'Products', 'Systems', 'Sensors', 'Odometry'],
     CodeInfo: ['CodeLang', 'CodeEnv', 'CodeTools', 'Vision']
 }
+
+const nonBlockedGetRequests = [
+    "/internal/getWebFlags",
+    "/",
+]
+
+const nonBlockedPostRequests = [
+    "/",
+]
+
+const publicWebFlags = [
+    "BannerHTML"
+]
 
 app.use(
   '/teams/*',
@@ -37,6 +50,26 @@ app.use('/internal/*', async (c, next) => {
     exposeHeaders: ['Content-Length', 'Access-Control-Allow-Origin'],
   })
   return corsMiddlewareHandler(c, next)
+})
+
+app.use('/*', async (c, next) => {
+
+    if (c.req.method == "GET") {
+        let readEnabled = await flags.get('APIReadEnabled')
+        if (readEnabled != 'TRUE' && !nonBlockedGetRequests.includes(c.req.path)) {
+            return new Response("Requests to the FTC Open Alliance are temporarily disabled. If you believe this is a mistake, please contact us.", {status: 503})
+        }
+    }
+
+    if (c.req.method == "POST") {
+        let writeEnabled = await flags.get('APIWriteEnabled')
+        if (writeEnabled != 'TRUE' && !nonBlockedPostRequests.includes(c.req.path)) {
+            return new Response("Data Submissions to the FTC Open Alliance are temporarily disabled.", {status: 503})
+        }
+    }
+
+    await next()
+
 })
 
 app.get('/', async (c) => {
@@ -69,43 +102,40 @@ app.get('/teams/:teamnumber', async (c) => {
     
 })
 
-app.get('/teams/:teamnumber/allAwards', async (c) => {
-    
-    let data = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
-    .bind(c.req.param('teamnumber'))
-    .run()
-    
-    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-    
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
-    
-})
-
 app.get('/teams/:teamnumber/all', async (c) => {
+
+    let returnData = {}
 
     if (isNaN(c.req.param('teamnumber'))) {return new Response('Team Number Invalid.', {status: 400})}
     
     let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
+        SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.* FROM Teams
         LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
         LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
         LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
         LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
         LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
-        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
         WHERE Teams.TeamNumber IS ?
         `)
+    .bind(c.req.param('teamnumber'))
+    .run()
+
+    let awardData = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
     .bind(c.req.param('teamnumber'))
     .run()
     
     if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
 
+    returnData = data.results[0]
+
     //Parse Array Data
     for (const key in data.results[0]) {
         if (arrayData.includes(key)) {
-            data.results[0][key] = JSON.parse(data.results[0][key])
+            returnData[key] = JSON.parse(returnData[key])
         }
     }
+
+    returnData.Awards = awardData.results.sort((a, b) => a.Year - b.Year) || []
 
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
     
@@ -211,6 +241,15 @@ app.get('/internal/getTeamStats', async (c) => {
 
 })
 
+app.get('/internal/getWebFlags', async (c) => {
+    let data = {}
+    for (const key of publicWebFlags) {
+        let value = await flags.get(key)
+        data[key] = value
+    }
+    return new Response(JSON.stringify(data), {headers: JSONHeader})
+})
+
 app.post('/internal/formSubmission', async (c) => {
     
     let formData
@@ -294,6 +333,7 @@ export default {
     async fetch(request, env, ctx) {
         db = env.FTCOA_MAIN_DB
         archive = env.FTCOA_ARCHIVE
+        flags = env.WEB_FLAGS
         return app.fetch(request, env, ctx)
     }
 }

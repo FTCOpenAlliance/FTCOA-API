@@ -30,3 +30,12 @@ bucket_name = 'archive'
 binding = 'FTCOA_ARCHIVE'
 bucket_name = 'archive'
 preview_bucket_name = 'archive'
+
+[[kv_namespaces]]
+binding = "WEB_FLAGS"
+id = "9b0795fba05349d3bdfd33637a855c94"
+
+[[env.dev.kv_namespaces]]
+binding = "WEB_FLAGS"
+id = "9b0795fba05349d3bdfd33637a855c94"
+preview_id = "9b0795fba05349d3bdfd33637a855c94"
