@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
-import { env } from 'hono/adapter'
 import { cors } from 'hono/cors'
+import { cloudflareRateLimiter } from "@hono-rate-limiter/cloudflare";
+import { Constants } from "./config.ts"
 
 const app = new Hono()
 
@@ -10,27 +11,7 @@ let db
 let archive
 let flags
 
-const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
-
-const statsSchema = {
-    TeamInfo: ['TeamType', 'Budget', 'Workspace', 'Sponsors'],
-    RobotInfo: ['Drivetrain', 'Materials', 'Products', 'Systems', 'Sensors', 'Odometry'],
-    CodeInfo: ['CodeLang', 'CodeEnv', 'CodeTools', 'Vision']
-}
-
-const nonBlockedGetRequests = [
-    "/internal/getWebFlags",
-    "/",
-]
-
-const nonBlockedPostRequests = [
-    "/",
-]
-
-const publicWebFlags = [
-    "BannerHTML"
-]
-
+// CORS for Teams (Public) Endpoints
 app.use(
   '/teams/*',
   cors({
@@ -39,6 +20,7 @@ app.use(
   })
 )
 
+// CORS for Internal Endpoints
 app.use('/internal/*', async (c, next) => {
   const corsMiddlewareHandler = cors({
     origin: (origin, c) => {
@@ -52,24 +34,91 @@ app.use('/internal/*', async (c, next) => {
   return corsMiddlewareHandler(c, next)
 })
 
+// API Kill Switch
 app.use('/*', async (c, next) => {
 
     if (c.req.method == "GET") {
         let readEnabled = await flags.get('APIReadEnabled')
-        if (readEnabled != 'TRUE' && !nonBlockedGetRequests.includes(c.req.path)) {
+        if (readEnabled != 'TRUE' && !Constants.nonBlockedGetRequests.includes(c.req.path)) {
             return new Response("Requests to the FTC Open Alliance are temporarily disabled. If you believe this is a mistake, please contact us.", {status: 503})
         }
     }
 
     if (c.req.method == "POST") {
         let writeEnabled = await flags.get('APIWriteEnabled')
-        if (writeEnabled != 'TRUE' && !nonBlockedPostRequests.includes(c.req.path)) {
+        if (writeEnabled != 'TRUE' && !Constants.nonBlockedPostRequests.includes(c.req.path)) {
             return new Response("Data Submissions to the FTC Open Alliance are temporarily disabled.", {status: 503})
         }
     }
 
     await next()
 
+})
+
+// Rate Limiting
+
+// function generateKey(c) {
+//     return c.req.header("cf-connecting-ip") ?? ""
+// }
+
+// app.use(Constants.baseRateLimitPaths, 
+//     cloudflareRateLimiter({
+//         message: Constants.rateLimitMessage,
+//         rateLimitBinding: (c) => c.env.RATE_LIMIT_BASE,
+//         keyGenerator: (c) => generateKey(c),
+//   })
+// )
+
+// app.use(Constants.moderateRateLimitPaths, 
+//     cloudflareRateLimiter({
+//         message: Constants.rateLimitMessage,
+//         rateLimitBinding: (c) => c.env.RATE_LIMIT_MODERATE,
+//         keyGenerator: (c) => generateKey(c),
+//   })
+// )
+
+// app.use(Constants.strictRateLimitPaths, 
+//     cloudflareRateLimiter({
+//         message: Constants.rateLimitMessage,
+//         rateLimitBinding: (c) => c.env.RATE_LIMIT_STRICT,
+//         keyGenerator: (c) => generateKey(c),
+//   })
+// )
+
+// Caching
+app.use("/*", async (c, next) => {
+    
+    let req = c.req.raw
+    let cache = caches.default
+
+    if (req.method != 'GET') {
+        await next()
+        return
+    }
+
+    let cachedResponse = await cache.match(req)
+    if (cachedResponse != undefined) {
+        return cachedResponse
+    }
+
+    await next()
+    
+    let res = c.res.clone()
+
+    let cacheTime = 0
+
+    Object.keys(Constants.cacheTimes).forEach((key) => {
+        let pattern = new URLPattern({pathname: key})
+        if (pattern.test(req.url)) {
+            cacheTime = res.ok ? Constants.cacheTimes[key][0] : Constants.cacheTimes[key][1]
+        }
+    })
+
+    if (cacheTime > 0) { console.info(`Request reached DB: ${c.req.path} | Now Caching for ${cacheTime} seconds.`) }
+
+    res.headers.set("Cache-Control", `max-age=${cacheTime}`)
+
+    await cache.put(req, res)
 })
 
 app.get('/', async (c) => {
@@ -79,7 +128,7 @@ app.get('/', async (c) => {
         {headers: new Headers({"Content-Type": "text/html"})})
     })
     
-app.get('/teams', async () => {
+app.get('/teams', async (c) => {
     
     let data = await db.prepare(`
         SELECT Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
@@ -102,7 +151,8 @@ app.get('/teams/:teamnumber', async (c) => {
     
 })
 
-app.get('/teams/:teamnumber/all', async (c) => {
+// /teams/:teamnumber/all and /internal/formAutofillData/:teamnumber both have the same query, but the former is cached.
+async function allTeamDataHandler(c) {
 
     let returnData = {}
 
@@ -130,7 +180,7 @@ app.get('/teams/:teamnumber/all', async (c) => {
 
     //Parse Array Data
     for (const key in data.results[0]) {
-        if (arrayData.includes(key)) {
+        if (Constants.arrayData.includes(key)) {
             returnData[key] = JSON.parse(returnData[key])
         }
     }
@@ -139,7 +189,10 @@ app.get('/teams/:teamnumber/all', async (c) => {
 
     return new Response(JSON.stringify(data.results), {headers: JSONHeader})
     
-})
+}
+
+app.get('/teams/:teamnumber/all', allTeamDataHandler)
+app.get('/internal/formAutofillData/:teamnumber', allTeamDataHandler)
 
 app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
     let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamNumber IS ?)")
@@ -184,10 +237,10 @@ app.get('/internal/getTeamStats', async (c) => {
     let numTeams = 0
 
     //Loop through the tables specified in the JSON Object
-    for (const table of Object.keys(statsSchema)) { 
+    for (const table of Object.keys(Constants.statsSchema)) { 
 
         //Get the list of columns for the current table
-        let columnNames = statsSchema[table]
+        let columnNames = Constants.statsSchema[table]
 
         //Make a new empty array for each column in both objects.
         columnNames.forEach((column) => {
@@ -243,7 +296,7 @@ app.get('/internal/getTeamStats', async (c) => {
 
 app.get('/internal/getWebFlags', async (c) => {
     let data = {}
-    for (const key of publicWebFlags) {
+    for (const key of Constants.publicWebFlags) {
         let value = await flags.get(key)
         data[key] = value
     }
@@ -265,7 +318,7 @@ app.post('/internal/formSubmission', async (c) => {
 
     //Serialize Arrays
     for (const key in formData) {
-        if (!arrayData.includes(key)) {continue}
+        if (!Constants.arrayData.includes(key)) {continue}
         if (!Array.isArray(formData[key])) {return new Response(`Field ${key} is not an array.`, {status: 400})}
         try {
             formData[key] = JSON.stringify(formData[key])
