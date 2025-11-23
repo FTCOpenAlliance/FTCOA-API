@@ -35,7 +35,33 @@
                     "id": "9b0795fba05349d3bdfd33637a855c94",
                     "preview_id": "9b0795fba05349d3bdfd33637a855c94"
                 }
-            ]
+            ],
+            "ratelimits": [
+                {
+                    "name": "RATE_LIMIT_BASE",
+                    "namespace_id": "1000",
+                    "simple": {
+                        "limit": 12,
+                        "period": 10
+                    }
+                },
+                {
+                    "name": "RATE_LIMIT_MODERATE",
+                    "namespace_id": "1001",
+                    "simple": {
+                        "limit": 15,
+                        "period": 60
+                    }
+                },
+                {
+                    "name": "RATE_LIMIT_STRICT",
+                    "namespace_id": "1002",
+                    "simple": {
+                        "limit": 2,
+                        "period": 60
+                    }
+                }
+            ],
         }
     },
     "d1_databases": [
@@ -58,29 +84,29 @@
         }
     ],
     "ratelimits": [
-    {
-      "name": "RATE_LIMIT_BASE",
-      "namespace_id": "1000",
-      "simple": {
-        "limit": 80,
-        "period": 60
-      }
-    },
-    {
-      "name": "RATE_LIMIT_MODERATE",
-      "namespace_id": "1001",
-      "simple": {
-        "limit": 15,
-        "period": 60
-      }
-    },
-    {
-      "name": "RATE_LIMIT_STRICT",
-      "namespace_id": "1002",
-      "simple": {
-        "limit": 2,
-        "period": 60
-      }
-    }
-  ]
+        {
+            "name": "RATE_LIMIT_BASE",
+            "namespace_id": "1000",
+            "simple": {
+                "limit": 10,
+                "period": 10
+            }
+        },
+        {
+            "name": "RATE_LIMIT_MODERATE",
+            "namespace_id": "1001",
+            "simple": {
+                "limit": 15,
+                "period": 60
+            }
+        },
+        {
+            "name": "RATE_LIMIT_STRICT",
+            "namespace_id": "1002",
+            "simple": {
+                "limit": 2,
+                "period": 60
+            }
+        }
+    ],
 }

@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { cloudflareRateLimiter } from "@hono-rate-limiter/cloudflare";
 import { Constants } from "./config.ts"
 
 const app = new Hono()
@@ -56,34 +55,50 @@ app.use('/*', async (c, next) => {
 })
 
 // Rate Limiting
+app.use("/*", async (c, next) => {
+    let limiter;
+    let limitType = "";
 
-// function generateKey(c) {
-//     return c.req.header("cf-connecting-ip") ?? ""
-// }
+    for (const path of Constants.baseRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_BASE
+            limitType = "BASE"
+            break;
+        }
+    }
+    for (const path of Constants.moderateRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_MODERATE
+            limitType = "MODERATE"
+            break;
+        }
+    }
+    for (const path of Constants.strictRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_STRICT
+            limitType = "STRICT"
+            break;
+        }
+    }
 
-// app.use(Constants.baseRateLimitPaths, 
-//     cloudflareRateLimiter({
-//         message: Constants.rateLimitMessage,
-//         rateLimitBinding: (c) => c.env.RATE_LIMIT_BASE,
-//         keyGenerator: (c) => generateKey(c),
-//   })
-// )
+    if (limiter == undefined) {
+        await next()
+        return;
+    }
 
-// app.use(Constants.moderateRateLimitPaths, 
-//     cloudflareRateLimiter({
-//         message: Constants.rateLimitMessage,
-//         rateLimitBinding: (c) => c.env.RATE_LIMIT_MODERATE,
-//         keyGenerator: (c) => generateKey(c),
-//   })
-// )
+    const { success } = await limiter.limit({key: c.req.header("cf-connecting-ip") ?? ""})
 
-// app.use(Constants.strictRateLimitPaths, 
-//     cloudflareRateLimiter({
-//         message: Constants.rateLimitMessage,
-//         rateLimitBinding: (c) => c.env.RATE_LIMIT_STRICT,
-//         keyGenerator: (c) => generateKey(c),
-//   })
-// )
+    if (!success) {
+        console.info(`Rate limit reached on request from ${c.req.header("cf-connecting-ip")} to ${c.req.path} (Limit Type: ${limitType})`)
+        return new Response(Constants.rateLimitMessage, {status: 429})
+    }
+
+    await next()
+
+})
 
 // Caching
 app.use("/*", async (c, next) => {
@@ -126,8 +141,8 @@ app.get('/', async (c) => {
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,
         {headers: new Headers({"Content-Type": "text/html"})})
-    })
-    
+})
+
 app.get('/teams', async (c) => {
     
     let data = await db.prepare(`
