@@ -26,4 +26,7 @@ export abstract class Constants {
         "BannerHTML"
     ]
 
+    public static notificationDBLink = "https://dash.cloudflare.com/742c723e9d656d02b2e77347b3b05cfd/workers/d1/databases/47a29a14-1352-4792-b101-8dd8f9a3d245/studio"
+    public static notificationKVLink = "https://dash.cloudflare.com/742c723e9d656d02b2e77347b3b05cfd/workers/kv/namespaces/9b0795fba05349d3bdfd33637a855c94"
+
 }

@@ -3,7 +3,10 @@
     "name": "ftcoa-api",
     "main": "src/index.js",
     "workers_dev": true,
-    "compatibility_date": "2023-08-23",
+    "compatibility_date": "2025-09-15",
+    "compatibility_flags": [
+        "nodejs_compat",
+    ],
     "vars": {
         "CORS_ORIGIN": "https://ftcopenalliance.org"
     },
@@ -19,21 +22,24 @@
                 {
                     "binding": "FTCOA_MAIN_DB",
                     "database_id": "33ea40db-f818-466e-acf0-6a7bed8fa401",
-                    "database_name": "D1-ftcoatestdb"
+                    "database_name": "D1-ftcoatestdb",
+                    "remote": true,
                 }
             ],
             "r2_buckets": [
                 {
                     "binding": "FTCOA_ARCHIVE",
                     "bucket_name": "archive",
-                    "preview_bucket_name": "archive"
+                    "preview_bucket_name": "archive",
+                    "remote": true,
                 }
             ],
             "kv_namespaces": [
                 {
                     "binding": "WEB_FLAGS",
                     "id": "9b0795fba05349d3bdfd33637a855c94",
-                    "preview_id": "9b0795fba05349d3bdfd33637a855c94"
+                    "preview_id": "9b0795fba05349d3bdfd33637a855c94",
+                    "remote": true,
                 }
             ],
             "ratelimits": [

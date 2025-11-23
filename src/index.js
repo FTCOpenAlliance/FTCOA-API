@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { Constants } from "./config.ts"
+import Chat from './messages.ts'
 
 const app = new Hono()
 
