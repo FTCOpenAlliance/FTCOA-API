@@ -1,4 +1,4 @@
-export abstract class Constants {
+export default abstract class Constants {
 
     public static arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
 
@@ -13,7 +13,7 @@ export abstract class Constants {
     public static nonBlockedPostRequests = ["/"]
 
     public static cacheTimes = {
-        "/teams/*?": [1200, 120], //20 mins if OK, 2 mins otherwise.
+        "/teams/*?": [600, 120], //10 mins if OK, 2 mins otherwise.
         "/internal/getTeamStats": [3600, 120] // 1 hr if OK, 2 mins otherwise.
     }
     public static baseRateLimitPaths = ["/teams", "/teams/*", "/internal/checkTeamPII", "/internal/getWebFlags"]

@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { Constants } from "./config.ts"
+import Data from './data.js'
+import Constants from "./config.ts"
 import Chat from './messages.ts'
+import { logger } from 'hono/logger'
 
 const app = new Hono()
 
@@ -145,70 +147,29 @@ app.get('/', async (c) => {
 })
 
 app.get('/teams', async (c) => {
-    
-    let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
-        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
-        `).run()
-    
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
+    let data = await Data.getTeamList(db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
     
 app.get('/teams/:teamnumber', async (c) => {
-    
-    let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber WHERE Teams.TeamNumber IS ?")
-    .bind(c.req.param('teamnumber'))
-    .run()
-    
-    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-    
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
-    
+    let data = await Data.getTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
 // /teams/:teamnumber/all and /internal/formAutofillData/:teamnumber both have the same query, but the former is cached.
-async function allTeamDataHandler(c) {
+app.get('/teams/:teamnumber/all', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
+app.get('/internal/formAutofillData/:teamnumber', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
 
-    let returnData = {}
-
-    if (isNaN(c.req.param('teamnumber'))) {return new Response('Team Number Invalid.', {status: 400})}
-    
-    let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.* FROM Teams
-        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-        LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
-        LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
-        LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
-        LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
-        WHERE Teams.TeamNumber IS ?
-        `)
-    .bind(c.req.param('teamnumber'))
-    .run()
-
-    let awardData = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
-    .bind(c.req.param('teamnumber'))
-    .run()
-    
-    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-
-    returnData = data.results[0]
-
-    //Parse Array Data
-    for (const key in data.results[0]) {
-        if (Constants.arrayData.includes(key)) {
-            returnData[key] = JSON.parse(returnData[key])
-        }
-    }
-
-    returnData.Awards = awardData.results.sort((a, b) => a.Year - b.Year) || []
-
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
-    
-}
-
-app.get('/teams/:teamnumber/all', allTeamDataHandler)
-app.get('/internal/formAutofillData/:teamnumber', allTeamDataHandler)
+app.get('/internal/getTeamStats', async (c) => {
+    let data = await Data.getTeamStats(db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
 
 app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
     let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamNumber IS ?)")
@@ -244,72 +205,6 @@ app.get('/internal/getArchiveList', async (c) => {
 
 })
 
-app.get('/internal/getTeamStats', async (c) => {
-
-    let uncountedData = {}
-
-    let returnData = {}
-
-    let numTeams = 0
-
-    //Loop through the tables specified in the JSON Object
-    for (const table of Object.keys(Constants.statsSchema)) { 
-
-        //Get the list of columns for the current table
-        let columnNames = Constants.statsSchema[table]
-
-        //Make a new empty array for each column in both objects.
-        columnNames.forEach((column) => {
-            uncountedData[column] = []
-            returnData[column] = []
-        })
-
-        //DB Query
-        let dbData = await db.prepare(`SELECT ${columnNames.join(', ')} FROM ${table}`).run()
-
-        numTeams = dbData.results.length
-
-        //For every column of every entry, check if it is an array.
-        //If it is, add every element to the respective array.
-        //Otherwise, simply add the value to the array directly.
-        dbData.results.forEach((entry) => {
-            columnNames.forEach((column) => {
-                try {
-                    if (Array.isArray(JSON.parse(entry[column]))) {
-                        JSON.parse(entry[column]).forEach((option) => {
-                            uncountedData[column].push(option)
-                        })
-                    }
-                } catch (error) {
-                    uncountedData[column].push(entry[column])
-                }
-            })
-        })
-    }
-
-    //Loop over every statistic
-    Object.keys(uncountedData).forEach((stat) => {
-
-        //For every unique statistic, add an object to the results array that contains it's name and count.
-        //(Formatted for Apache ECharts)
-        ([...new Set(uncountedData[stat])]).forEach((uniqueAnswer) => {
-            returnData[stat].push(
-                {
-                    name: uniqueAnswer,
-                    value: uncountedData[stat].filter(x => x === uniqueAnswer).length
-                }
-                    
-            )
-        })
-
-    })
-
-    returnData.NumTeams = numTeams
-
-    return new Response(JSON.stringify(returnData), {headers: JSONHeader})
-
-})
-
 app.get('/internal/getWebFlags', async (c) => {
     let data = {}
     for (const key of Constants.publicWebFlags) {
@@ -323,6 +218,7 @@ app.post('/internal/formSubmission', async (c) => {
     
     let formData
     let teamLocation
+    let oldData
 
     try {
         formData = await c.req.json()
@@ -331,6 +227,14 @@ app.post('/internal/formSubmission', async (c) => {
     }
     
     if (isNaN(formData.TeamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
+
+    await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
+        if (value.error == null) {
+            oldData = value.data
+        } else {
+            oldData = "Error getting old data: " + value.error
+        }
+    })
 
     //Serialize Arrays
     for (const key in formData) {
@@ -389,13 +293,35 @@ app.post('/internal/formSubmission', async (c) => {
         .bind(formData.TeamNumber, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
 
+        await Chat.sendFormSubmitNotification({
+            devEnvironment: c.env.ENVIRONMENT != "prod",
+            teamNumber: formData.TeamNumber,
+            prevData: JSON.stringify(oldData, null, "   "),
+            newData: JSON.stringify(formData, null, "   "),
+            timestamp: Date.now(),
+            sourceIP: c.req.header("cf-connecting-ip") ?? "Unknown"
+        })
+
         return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
         
     } catch (e) {
         console.log(e)
-        return new Response('D1 SQL Error.', {status: 500})
+        return new Response('Internal Error while Updating Data.', {status: 500})
     }
     
+})
+
+app.get("/internal/testChat", async (c) => {
+    await Chat.sendFormSubmitNotification({
+        devEnvironment: true,
+        teamNumber: 99999,
+        prevData: "{}",
+        newData: "{}",
+        timestamp: Date.now(),
+        sourceIP: "localhost"
+    })
+
+    return new R
 })
 
 export default {

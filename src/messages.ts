@@ -1,9 +1,11 @@
 import { google } from "googleapis";
-import { Constants } from "./config";
+import Constants from "./config";
 
 type formSubmitNotificationData = {
+    devEnvironment: boolean,
     teamNumber: number,
-    dbDelta: string,
+    prevData: string,
+    newData: string,
     timestamp: EpochTimeStamp,
     sourceIP: string,
 }
@@ -39,19 +41,25 @@ export default class Chat {
                         {
                             card: {
                                 "header": {
-                                    "title": "New Team Update!",
+                                    "title": (data.devEnvironment ? "[DEVELOP] " : "") + "New Team Update!",
                                     "subtitle": `New information has just been recieved for team ${data.teamNumber} by the Open Alliance API.`
                                 },
                                 "sections": [
                                     {
                                         "header": "Request Deltas:",
-                                        "collapsible": true,
+                                        "collapsible": false,
                                         "uncollapsibleWidgetsCount": 0,
                                         "widgets": [
                                             {
                                                 "textParagraph": {
-                                                    "text": data.dbDelta,
-                                                    "maxLines": 2
+                                                    "text": "<strong>Previous Data:</strong><br>" + data.prevData,
+                                                    "maxLines": 4,
+                                                }
+                                            },
+                                            {
+                                                "textParagraph": {
+                                                    "text": "<strong>Incoming Data:</strong><br>" + data.newData,
+                                                    "maxLines": 4
                                                 }
                                             }
                                         ]
