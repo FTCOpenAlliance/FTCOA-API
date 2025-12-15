@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import Data from './data.js'
 import Constants from "./config.ts"
-import Chat from './messages.ts'
-import { logger } from 'hono/logger'
 
 const app = new Hono()
 
@@ -292,15 +290,6 @@ app.post('/internal/formSubmission', async (c) => {
         await db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamNumber, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(formData.TeamNumber, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
-
-        await Chat.sendFormSubmitNotification({
-            devEnvironment: c.env.ENVIRONMENT != "prod",
-            teamNumber: formData.TeamNumber,
-            prevData: JSON.stringify(oldData, null, "   "),
-            newData: JSON.stringify(formData, null, "   "),
-            timestamp: Date.now(),
-            sourceIP: c.req.header("cf-connecting-ip") ?? "Unknown"
-        })
 
         return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
         
