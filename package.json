@@ -3,14 +3,14 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev --remote --env dev",
 		"start": "wrangler dev --env dev"
 	},
 	"devDependencies": {
 		"wrangler": "^4.24.0"
 	},
 	"dependencies": {
+		"@hono-rate-limiter/cloudflare": "^0.2.2",
+		"googleapis": "^166.0.0",
 		"hono": "^4.9.2",
 		"tslib": "^2.8.1"
 	}

@@ -1,0 +1,115 @@
+import { google } from "googleapis";
+import Constants from "./config";
+
+type formSubmitNotificationData = {
+    devEnvironment: boolean,
+    teamNumber: number,
+    prevData: string,
+    newData: string,
+    timestamp: EpochTimeStamp,
+    sourceIP: string,
+}
+
+export default class Chat {
+    
+    private static jwt = new google.auth.JWT({
+        email: process.env.GCHAT_SERVICE_EMAIL,
+        key: process.env.GCHAT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        scopes: ['https://www.googleapis.com/auth/chat.bot'],
+    })
+    
+    private static api = google.chat({
+        version: "v1",
+        auth: this.jwt
+    })
+    
+    public static async sendFormSubmitNotification(data: formSubmitNotificationData) {
+        
+        let spaceListResponse = await this.api.spaces.list()
+        let spaceList = spaceListResponse.data.spaces
+        
+        spaceList?.forEach(async (space) => {
+            await this.api.spaces.messages.create({
+                parent: space.name ?? "",
+                requestBody: {
+                    cardsV2: [
+                        {
+                            card: {
+                                "header": {
+                                    "title": (data.devEnvironment ? "[DEVELOP] " : "") + "New Team Update!",
+                                    "subtitle": `New information has just been recieved for team ${data.teamNumber} by the Open Alliance API.`
+                                },
+                                "sections": [
+                                    {
+                                        "header": "Request Deltas:",
+                                        "collapsible": false,
+                                        "uncollapsibleWidgetsCount": 0,
+                                        "widgets": [
+                                            {
+                                                "textParagraph": {
+                                                    "text": "<strong>Previous Data:</strong><br>" + data.prevData,
+                                                    "maxLines": 4,
+                                                }
+                                            },
+                                            {
+                                                "textParagraph": {
+                                                    "text": "<strong>Incoming Data:</strong><br>" + data.newData,
+                                                    "maxLines": 4
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "header": "Information",
+                                        "collapsible": true,
+                                        "uncollapsibleWidgetsCount": 1,
+                                        "widgets": [
+                                            {
+                                                "textParagraph": {
+                                                    "text": `Timestamp: ${new Date(data.timestamp).toUTCString()} <br> Source IP: ${data.sourceIP}`,
+                                                    "maxLines": 2
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "header": "Actions",
+                                        "collapsible": true,
+                                        "uncollapsibleWidgetsCount": 1,
+                                        "widgets": [
+                                            {
+                                                "buttonList": {
+                                                    "buttons": [
+                                                        {
+                                                            "text": "Explore Database",
+                                                            "type": "OUTLINED",
+                                                            "onClick": {
+                                                                "openLink": {
+                                                                    "url": Constants.notificationDBLink
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "text": "Access API Kill-Switches",
+                                                            "type": "FILLED",
+                                                            "onClick": {
+                                                                "openLink": {
+                                                                    "url": Constants.notificationKVLink
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            })
+        });
+    }
+    
+}

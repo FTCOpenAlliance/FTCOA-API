@@ -1,6 +1,9 @@
 import { Hono } from 'hono'
-import { env } from 'hono/adapter'
 import { cors } from 'hono/cors'
+import Data from './data.js'
+import Constants from "./config.ts"
+import Chat from './messages.ts'
+import { logger } from 'hono/logger'
 
 const app = new Hono()
 
@@ -10,27 +13,7 @@ let db
 let archive
 let flags
 
-const arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
-
-const statsSchema = {
-    TeamInfo: ['TeamType', 'Budget', 'Workspace', 'Sponsors'],
-    RobotInfo: ['Drivetrain', 'Materials', 'Products', 'Systems', 'Sensors', 'Odometry'],
-    CodeInfo: ['CodeLang', 'CodeEnv', 'CodeTools', 'Vision']
-}
-
-const nonBlockedGetRequests = [
-    "/internal/getWebFlags",
-    "/",
-]
-
-const nonBlockedPostRequests = [
-    "/",
-]
-
-const publicWebFlags = [
-    "BannerHTML"
-]
-
+// CORS for Teams (Public) Endpoints
 app.use(
   '/teams/*',
   cors({
@@ -39,6 +22,7 @@ app.use(
   })
 )
 
+// CORS for Internal Endpoints
 app.use('/internal/*', async (c, next) => {
   const corsMiddlewareHandler = cors({
     origin: (origin, c) => {
@@ -52,18 +36,19 @@ app.use('/internal/*', async (c, next) => {
   return corsMiddlewareHandler(c, next)
 })
 
+// API Kill Switch
 app.use('/*', async (c, next) => {
 
     if (c.req.method == "GET") {
         let readEnabled = await flags.get('APIReadEnabled')
-        if (readEnabled != 'TRUE' && !nonBlockedGetRequests.includes(c.req.path)) {
+        if (readEnabled != 'TRUE' && !Constants.nonBlockedGetRequests.includes(c.req.path)) {
             return new Response("Requests to the FTC Open Alliance are temporarily disabled. If you believe this is a mistake, please contact us.", {status: 503})
         }
     }
 
     if (c.req.method == "POST") {
         let writeEnabled = await flags.get('APIWriteEnabled')
-        if (writeEnabled != 'TRUE' && !nonBlockedPostRequests.includes(c.req.path)) {
+        if (writeEnabled != 'TRUE' && !Constants.nonBlockedPostRequests.includes(c.req.path)) {
             return new Response("Data Submissions to the FTC Open Alliance are temporarily disabled.", {status: 503})
         }
     }
@@ -72,73 +57,118 @@ app.use('/*', async (c, next) => {
 
 })
 
+// Rate Limiting
+app.use("/*", async (c, next) => {
+    let limiter;
+    let limitType = "";
+
+    for (const path of Constants.baseRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_BASE
+            limitType = "BASE"
+            break;
+        }
+    }
+    for (const path of Constants.moderateRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_MODERATE
+            limitType = "MODERATE"
+            break;
+        }
+    }
+    for (const path of Constants.strictRateLimitPaths) {
+        let pattern = new URLPattern({pathname: path})
+        if (pattern.test(c.req.raw.url)) {
+            limiter = c.env.RATE_LIMIT_STRICT
+            limitType = "STRICT"
+            break;
+        }
+    }
+
+    if (limiter == undefined) {
+        await next()
+        return;
+    }
+
+    const { success } = await limiter.limit({key: c.req.header("cf-connecting-ip") ?? ""})
+
+    if (!success) {
+        console.info(`Rate limit reached on request from ${c.req.header("cf-connecting-ip")} to ${c.req.path} (Limit Type: ${limitType})`)
+        return new Response(Constants.rateLimitMessage, {status: 429})
+    }
+
+    await next()
+
+})
+
+// Caching
+app.use("/*", async (c, next) => {
+    
+    let req = c.req.raw
+    let cache = caches.default
+
+    if (req.method != 'GET') {
+        await next()
+        return
+    }
+
+    let cachedResponse = await cache.match(req)
+    if (cachedResponse != undefined) {
+        return cachedResponse
+    }
+
+    await next()
+    
+    let res = c.res.clone()
+
+    let cacheTime = 0
+
+    Object.keys(Constants.cacheTimes).forEach((key) => {
+        let pattern = new URLPattern({pathname: key})
+        if (pattern.test(req.url)) {
+            cacheTime = res.ok ? Constants.cacheTimes[key][0] : Constants.cacheTimes[key][1]
+        }
+    })
+
+    if (cacheTime > 0) { console.info(`Request reached DB: ${c.req.path} | Now Caching for ${cacheTime} seconds.`) }
+
+    res.headers.set("Cache-Control", `max-age=${cacheTime}`)
+
+    await cache.put(req, res)
+})
+
 app.get('/', async (c) => {
     return new Response(`
       <h1>Hello, World!</h1>
       <p>You've successfully accessed the FTC Open Alliance API.</p>`,
         {headers: new Headers({"Content-Type": "text/html"})})
-    })
-    
-app.get('/teams', async () => {
-    
-    let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
-        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
-        `).run()
-    
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
+})
+
+app.get('/teams', async (c) => {
+    let data = await Data.getTeamList(db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
     
 app.get('/teams/:teamnumber', async (c) => {
-    
-    let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber WHERE Teams.TeamNumber IS ?")
-    .bind(c.req.param('teamnumber'))
-    .run()
-    
-    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-    
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
-    
+    let data = await Data.getTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
+// /teams/:teamnumber/all and /internal/formAutofillData/:teamnumber both have the same query, but the former is cached.
 app.get('/teams/:teamnumber/all', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
+app.get('/internal/formAutofillData/:teamnumber', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
 
-    let returnData = {}
-
-    if (isNaN(c.req.param('teamnumber'))) {return new Response('Team Number Invalid.', {status: 400})}
-    
-    let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.* FROM Teams
-        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-        LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
-        LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
-        LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
-        LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
-        WHERE Teams.TeamNumber IS ?
-        `)
-    .bind(c.req.param('teamnumber'))
-    .run()
-
-    let awardData = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
-    .bind(c.req.param('teamnumber'))
-    .run()
-    
-    if (data.results == '') {return new Response('Team does not exist.', {status: 400})}
-
-    returnData = data.results[0]
-
-    //Parse Array Data
-    for (const key in data.results[0]) {
-        if (arrayData.includes(key)) {
-            returnData[key] = JSON.parse(returnData[key])
-        }
-    }
-
-    returnData.Awards = awardData.results.sort((a, b) => a.Year - b.Year) || []
-
-    return new Response(JSON.stringify(data.results), {headers: JSONHeader})
-    
+app.get('/internal/getTeamStats', async (c) => {
+    let data = await Data.getTeamStats(db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
 app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
@@ -175,75 +205,9 @@ app.get('/internal/getArchiveList', async (c) => {
 
 })
 
-app.get('/internal/getTeamStats', async (c) => {
-
-    let uncountedData = {}
-
-    let returnData = {}
-
-    let numTeams = 0
-
-    //Loop through the tables specified in the JSON Object
-    for (const table of Object.keys(statsSchema)) { 
-
-        //Get the list of columns for the current table
-        let columnNames = statsSchema[table]
-
-        //Make a new empty array for each column in both objects.
-        columnNames.forEach((column) => {
-            uncountedData[column] = []
-            returnData[column] = []
-        })
-
-        //DB Query
-        let dbData = await db.prepare(`SELECT ${columnNames.join(', ')} FROM ${table}`).run()
-
-        numTeams = dbData.results.length
-
-        //For every column of every entry, check if it is an array.
-        //If it is, add every element to the respective array.
-        //Otherwise, simply add the value to the array directly.
-        dbData.results.forEach((entry) => {
-            columnNames.forEach((column) => {
-                try {
-                    if (Array.isArray(JSON.parse(entry[column]))) {
-                        JSON.parse(entry[column]).forEach((option) => {
-                            uncountedData[column].push(option)
-                        })
-                    }
-                } catch (error) {
-                    uncountedData[column].push(entry[column])
-                }
-            })
-        })
-    }
-
-    //Loop over every statistic
-    Object.keys(uncountedData).forEach((stat) => {
-
-        //For every unique statistic, add an object to the results array that contains it's name and count.
-        //(Formatted for Apache ECharts)
-        ([...new Set(uncountedData[stat])]).forEach((uniqueAnswer) => {
-            returnData[stat].push(
-                {
-                    name: uniqueAnswer,
-                    value: uncountedData[stat].filter(x => x === uniqueAnswer).length
-                }
-                    
-            )
-        })
-
-    })
-
-    returnData.NumTeams = numTeams
-
-    return new Response(JSON.stringify(returnData), {headers: JSONHeader})
-
-})
-
 app.get('/internal/getWebFlags', async (c) => {
     let data = {}
-    for (const key of publicWebFlags) {
+    for (const key of Constants.publicWebFlags) {
         let value = await flags.get(key)
         data[key] = value
     }
@@ -254,6 +218,7 @@ app.post('/internal/formSubmission', async (c) => {
     
     let formData
     let teamLocation
+    let oldData
 
     try {
         formData = await c.req.json()
@@ -263,9 +228,17 @@ app.post('/internal/formSubmission', async (c) => {
     
     if (isNaN(formData.TeamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
 
+    await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
+        if (value.error == null) {
+            oldData = value.data
+        } else {
+            oldData = "Error getting old data: " + value.error
+        }
+    })
+
     //Serialize Arrays
     for (const key in formData) {
-        if (!arrayData.includes(key)) {continue}
+        if (!Constants.arrayData.includes(key)) {continue}
         if (!Array.isArray(formData[key])) {return new Response(`Field ${key} is not an array.`, {status: 400})}
         try {
             formData[key] = JSON.stringify(formData[key])
@@ -320,11 +293,19 @@ app.post('/internal/formSubmission', async (c) => {
         .bind(formData.TeamNumber, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
 
+        await Chat.sendFormSubmitNotification({
+            devEnvironment: c.env.ENVIRONMENT != "prod",
+            teamNumber: formData.TeamNumber,
+            prevData: JSON.stringify(oldData, null, "   "),
+            newData: JSON.stringify(formData, null, "   "),
+            timestamp: Date.now(),
+            sourceIP: c.req.header("cf-connecting-ip") ?? "Unknown"
+        })
+
         return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
         
     } catch (e) {
-        console.log(e)
-        return new Response('D1 SQL Error.', {status: 500})
+        return new Response('Internal Error while Updating Data.', {status: 500})
     }
     
 })
