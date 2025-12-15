@@ -49,7 +49,7 @@
                     "name": "RATE_LIMIT_BASE",
                     "namespace_id": "1000",
                     "simple": {
-                        "limit": 12,
+                        "limit": 10,
                         "period": 10
                     }
                 },

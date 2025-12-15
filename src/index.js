@@ -305,23 +305,9 @@ app.post('/internal/formSubmission', async (c) => {
         return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
         
     } catch (e) {
-        console.log(e)
         return new Response('Internal Error while Updating Data.', {status: 500})
     }
     
-})
-
-app.get("/internal/testChat", async (c) => {
-    await Chat.sendFormSubmitNotification({
-        devEnvironment: true,
-        teamNumber: 99999,
-        prevData: "{}",
-        newData: "{}",
-        timestamp: Date.now(),
-        sourceIP: "localhost"
-    })
-
-    return new R
 })
 
 export default {

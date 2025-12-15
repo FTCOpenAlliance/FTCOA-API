@@ -23,11 +23,6 @@ export default class Chat {
         auth: this.jwt
     })
     
-    public static async getSpaces() {
-        let res = await this.api.spaces.list()
-        console.log(res.data.spaces)
-    }
-    
     public static async sendFormSubmitNotification(data: formSubmitNotificationData) {
         
         let spaceListResponse = await this.api.spaces.list()
