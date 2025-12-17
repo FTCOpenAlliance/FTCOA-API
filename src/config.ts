@@ -3,6 +3,7 @@ export default abstract class Constants {
     public static arrayData = ['Materials', 'Products', 'Systems', 'Odometry', 'Sensors', 'CodeTools', 'Vision']
 
     public static statsSchema = {
+        Teams: ['Location'],
         TeamInfo: ['TeamType', 'Budget', 'Workspace', 'Sponsors'],
         RobotInfo: ['Drivetrain', 'Materials', 'Products', 'Systems', 'Sensors', 'Odometry'],
         CodeInfo: ['CodeLang', 'CodeEnv', 'CodeTools', 'Vision']
