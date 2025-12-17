@@ -126,6 +126,10 @@ export default class Data {
             //Otherwise, simply add the value to the array directly.
             dbData.results.forEach((entry) => {
                 columnNames.forEach((column) => {
+                    //Only separate by Country for Location
+                    if (table == "Teams" && column == "Location") {
+                        entry[column] = entry[column].split(", ")[2] ?? ""
+                    }
                     try {
                         if (Array.isArray(JSON.parse(entry[column]))) {
                             JSON.parse(entry[column]).forEach((option) => {
