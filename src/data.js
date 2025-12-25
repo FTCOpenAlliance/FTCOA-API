@@ -2,10 +2,8 @@ import Constants from "./config"
 
 export default class Data {
 
-    static async getAllTeamData(teamNumber, db) {
-    
-        let returnData = {}
-    
+    static async getAllTeamData(program, teamNumber, db) {
+        
         if (isNaN(teamNumber)) {
             return {
                 data: null,
@@ -14,45 +12,58 @@ export default class Data {
                 contentType: new Headers({"Content-Type": "text/plain"})
             }
         }
-        
+
+        let teamID;
+
+        if (program.toLowerCase() === "ftc") {
+            teamID = "FTC" + teamNumber.toString()
+        } else if (program.toLowerCase() === "frc") {
+            teamID = "FRC" + teamNumber.toString()
+        } else {
+            return {
+                data: null,
+                error: "Program Invalid.",
+                statusCode: 400,
+                contentType: new Headers({"Content-Type": "text/plain"})
+            }
+        }
+
         let data = await db.prepare(`
-            SELECT Teams.*, TeamLinks.*, TeamInfo.*, RobotInfo.*, CodeInfo.*, FreeResponse.* FROM Teams
-            LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-            LEFT JOIN TeamInfo ON Teams.TeamNumber = TeamInfo.TeamNumber
-            LEFT JOIN RobotInfo ON Teams.TeamNumber = RobotInfo.TeamNumber
-            LEFT JOIN CodeInfo ON Teams.TeamNumber = CodeInfo.TeamNumber
-            LEFT JOIN FreeResponse ON Teams.TeamNumber = FreeResponse.TeamNumber
-            WHERE Teams.TeamNumber IS ?
+            SELECT SUBSTR(Teams.TeamID, 4) AS TeamNumber, * FROM Teams
+            LEFT JOIN TeamLinks ON Teams.TeamID = TeamLinks.TeamID
+            LEFT JOIN TeamInfo ON Teams.TeamID = TeamInfo.TeamID
+            LEFT JOIN RobotInfo ON Teams.TeamID = RobotInfo.TeamID
+            LEFT JOIN CodeInfo ON Teams.TeamID = CodeInfo.TeamID
+            LEFT JOIN FreeResponse ON Teams.TeamID = FreeResponse.TeamID
+            WHERE Teams.TeamID IS ?
             `)
-        .bind(teamNumber)
+        .bind(teamID)
         .run()
-    
-        let awardData = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamNumber IS ?")
-        .bind(teamNumber)
+
+        let awardData = await db.prepare("SELECT TeamAwards.Award, TeamAwards.Year FROM TeamAwards WHERE TeamID IS ?")
+        .bind(teamID)
         .run()
-        
+
         if (data.results.length == 0) {
             return {
                 data: null,
-                error: "Team Does Not Exist on Open Alliance.",
+                error: "Team does not exist on the Open Alliance.",
                 statusCode: 500,
                 contentType: new Headers({"Content-Type": "text/plain"})
             }
         }
     
-        returnData = data.results[0]
-    
         //Parse Array Data
         for (const key in data.results[0]) {
             if (Constants.arrayData.includes(key)) {
-                returnData[key] = JSON.parse(returnData[key])
+                data.results[0][key] = JSON.parse(data.results[0][key])
             }
         }
     
-        returnData["Awards"] = awardData.results.sort((a, b) => a.Year - b.Year) || []
+        data.results[0]["Awards"] = awardData.results.sort((a, b) => a.Year - b.Year) || []
     
         return {
-            data: data.results,
+            data: data.results[0],
             error: null,
             statusCode: 200,
             contentType: new Headers({"Content-Type": "application/json"}),
@@ -60,35 +71,77 @@ export default class Data {
         
     }
 
-    static async getTeamData(teamNumber, db) {
-        let data = await db.prepare("SELECT * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber WHERE Teams.TeamNumber IS ?")
-            .bind(teamNumber)
+    static async getTeamData(program, teamNumber, db) {
+
+        if (isNaN(teamNumber)) {
+            return {
+                data: null,
+                error: "Team Number Invalid.",
+                statusCode: 400,
+                contentType: new Headers({"Content-Type": "text/plain"})
+            }
+        }
+
+        let teamID;
+
+        if (program.toLowerCase() === "ftc") {
+            teamID = "FTC" + teamNumber.toString()
+        } else if (program.toLowerCase() === "frc") {
+            teamID = "FRC" + teamNumber.toString()
+        } else {
+            return {
+                data: null,
+                error: "Program Invalid.",
+                statusCode: 400,
+                contentType: new Headers({"Content-Type": "text/plain"})
+            }
+        }
+
+        let data = await db.prepare("SELECT SUBSTR(Teams.TeamID, 4) AS TeamNumber, * FROM Teams LEFT JOIN TeamLinks ON Teams.TeamID = TeamLinks.TeamID WHERE Teams.TeamID IS ?")
+            .bind(teamID)
             .run()
         
         if (data.results.length == 0) {
             return {
                 data: null,
-                error: "Team Does Not Exist.",
+                error: "Team does not exist on the Open Alliance.",
                 statusCode: 400,
                 contentType: new Headers({"Content-Type": "text/plain"})
             }
         }
         
         return {
-                data: data.results,
+                data: data.results[0],
                 error: null,
                 statusCode: 200,
                 contentType: new Headers({"Content-Type": "application/json"})
         }
     }
 
-    static async getTeamList(db) {
+    static async getTeamList(program, db) {
+
+        if (program.toLowerCase() === "ftc") {
+            program = "FTC"
+        } else if (program.toLowerCase() === "frc") {
+            program = "FRC"
+        } else {
+            return {
+                data: null,
+                error: "Program Invalid.",
+                statusCode: 400,
+                contentType: new Headers({"Content-Type": "text/plain"})
+            }
+        }
+
         let data = await db.prepare(`
-        SELECT Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
-        LEFT JOIN TeamLinks ON Teams.TeamNumber = TeamLinks.TeamNumber
-        LEFT JOIN (SELECT TeamAwards.TeamNumber, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamNumber) AS NAward ON Teams.TeamNumber = NAward.TeamNumber
-        `).run()
-    
+        SELECT SUBSTR(Teams.TeamID, 4) AS TeamNumber, Teams.*, TeamLinks.*, NAward.NewestAwardYear, NAward.NewestAward FROM Teams
+        LEFT JOIN TeamLinks ON Teams.TeamID = TeamLinks.TeamID
+        LEFT JOIN (SELECT TeamAwards.TeamID, MAX(TeamAwards.Year) AS NewestAwardYear, TeamAwards.Award AS NewestAward FROM TeamAwards GROUP BY TeamAwards.TeamID) AS NAward ON Teams.TeamID = NAward.TeamID
+        WHERE Teams.TeamID LIKE ?
+        `)
+        .bind(`${program}%`)
+        .run()
+
         return {
             data: data.results,
             error: null,
@@ -97,12 +150,25 @@ export default class Data {
         }
     }
 
-    static async getTeamStats(db) {
+    static async getTeamStats(program, db) {
         let uncountedData = {}
         
         let returnData = {}
     
         let numTeams = 0
+
+        if (program.toLowerCase() === "ftc") {
+            program = "FTC"
+        } else if (program.toLowerCase() === "frc") {
+            program = "FRC"
+        } else {
+            return {
+                data: null,
+                error: "Program Invalid.",
+                statusCode: 400,
+                contentType: new Headers({"Content-Type": "text/plain"})
+            }
+        }
     
         //Loop through the tables specified in the JSON Object
         for (const table of Object.keys(Constants.statsSchema)) { 
@@ -117,8 +183,9 @@ export default class Data {
             })
     
             //DB Query
-            let dbData = await db.prepare(`SELECT ${columnNames.join(', ')} FROM ${table}`).run()
-    
+            let dbData = await db.prepare(`SELECT ${columnNames.join(', ')} FROM ${table} WHERE ${table}.TeamID LIKE ?`)
+            .bind(`${program}%`)
+            .run()
             numTeams = dbData.results.length
     
             //For every column of every entry, check if it is an array.

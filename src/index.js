@@ -107,7 +107,7 @@ app.use("/*", async (c, next) => {
     let req = c.req.raw
     let cache = caches.default
 
-    if (req.method != 'GET') {
+    if (req.method != 'GET' || c.env.ENVIRONMENT == 'dev') {
         await next()
         return
     }
@@ -144,34 +144,43 @@ app.get('/', async (c) => {
         {headers: new Headers({"Content-Type": "text/html"})})
 })
 
-app.get('/teams', async (c) => {
-    let data = await Data.getTeamList(db)
+app.get('/teams/:program', async (c) => {
+    let data = await Data.getTeamList(c.req.param("program"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
     
-app.get('/teams/:teamnumber', async (c) => {
-    let data = await Data.getTeamData(c.req.param("teamnumber"), db)
+app.get('/teams/:program/:teamnumber', async (c) => {
+    let data = await Data.getTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
 // /teams/:teamnumber/all and /internal/formAutofillData/:teamnumber both have the same query, but the former is cached.
-app.get('/teams/:teamnumber/all', async (c) => {
-    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+app.get('/teams/:program/:teamnumber/all', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
-app.get('/internal/formAutofillData/:teamnumber', async (c) => {
-    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
-    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
-})
-
-app.get('/internal/getTeamStats', async (c) => {
-    let data = await Data.getTeamStats(db)
+app.get('/internal/formAutofillData/:program/:teamnumber', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
-app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
-    let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamNumber IS ?)")
-    .bind(c.req.param('teamnumber'))
+app.get('/internal/getTeamStats/:program', async (c) => {
+    let data = await Data.getTeamStats(c.req.param("program"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
+
+app.get('/internal/checkTeamPII/:program/:teamnumber', async (c) => {
+
+    let program = c.req.param("program").toUpperCase()
+
+    if (program !== "FTC" && program !== "FRC") {
+        return new Response('Invalid program.', {status: 400})
+    }
+
+    let teamID = program + c.req.param("teamnumber")
+
+    let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamID IS ?)")
+    .bind(teamID)
     .run()
 
     let exists = Object.values(data.results[0])[0] == 1
