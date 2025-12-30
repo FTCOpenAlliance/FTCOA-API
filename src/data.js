@@ -143,7 +143,7 @@ export default class Data {
         .run()
 
         return {
-            data: data.results,
+            data: data.results.sort((a, b) => a.TeamNumber - b.TeamNumber),
             error: null,
             statusCode: 200,
             contentType: new Headers({"Content-Type": "application/json"})
