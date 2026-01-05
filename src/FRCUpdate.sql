@@ -10,13 +10,13 @@ ALTER TABLE TeamPII RENAME TO TeamPII_old;
 
 /* Create new tables under regular names */
 CREATE TABLE Teams (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     TeamName TEXT NOT NULL,
-    Location TEXT NOT NULL
+    Location TEXT
 );
 
 CREATE TABLE TeamLinks (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     BuildThread TEXT,
     CAD TEXT,
     Code TEXT,
@@ -26,7 +26,7 @@ CREATE TABLE TeamLinks (
 );
 
 CREATE TABLE TeamInfo (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     RookieYear INTEGER,
     TeamMembers INTEGER,
     Mentors INTEGER,
@@ -38,7 +38,7 @@ CREATE TABLE TeamInfo (
 );
 
 CREATE TABLE RobotInfo (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     Drivetrain TEXT,
     Materials TEXT,
     Products TEXT,
@@ -48,7 +48,7 @@ CREATE TABLE RobotInfo (
 );
 
 CREATE TABLE CodeInfo (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     CodeLang TEXT,
     CodeEnv TEXT,
     CodeTools TEXT,
@@ -56,7 +56,7 @@ CREATE TABLE CodeInfo (
 );
 
 CREATE TABLE FreeResponse (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     UniqueFeatures TEXT,
     Outreach TEXT,
     CodeAdvantage TEXT,
@@ -67,14 +67,14 @@ CREATE TABLE FreeResponse (
 );
 
 CREATE TABLE TeamAwards (
-    rowid INTEGER PRIMARY KEY,
+    rowid INTEGER PRIMARY KEY NOT NULL,
     TeamID TEXT,
     Year INTEGER,
     Award TEXT
 );
 
 CREATE TABLE TeamPII (
-    TeamID TEXT PRIMARY KEY,
+    TeamID TEXT PRIMARY KEY NOT NULL,
     ContactEmail TEXT,
     ShipAddress TEXT
 );

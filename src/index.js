@@ -269,8 +269,14 @@ app.post('/internal/formSubmission', async (c) => {
             let teamData = await scoutData.json()
 
             teamLocation = [teamData.city, teamData.state, teamData.country].join(", ")
-        } else {
-            throw new Error("Unsupported program.")
+        } else if (formData.Program === "FRC") {
+            let tbaData = await fetch(new Request(`https://www.thebluealliance.com/api/v3/team/frc${formData.TeamNumber}`, {
+                headers: {
+                    "X-TBA-Auth-Key": c.env.TBA_AUTH_KEY
+                }
+            }))
+            let teamData = await tbaData.json()
+            teamLocation = [teamData.city, teamData.state_prov, teamData.country].join(", ")
         }
 
     } catch (error) {
