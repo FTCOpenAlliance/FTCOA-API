@@ -140,7 +140,7 @@ app.use("/*", async (c, next) => {
 app.get('/', async (c) => {
     return new Response(`
       <h1>Hello, World!</h1>
-      <p>You've successfully accessed the FTC Open Alliance API.</p>`,
+      <p>You've successfully accessed the Open Alliance API.</p>`,
         {headers: new Headers({"Content-Type": "text/html"})})
 })
 

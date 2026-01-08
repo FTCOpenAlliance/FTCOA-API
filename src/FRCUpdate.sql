@@ -17,12 +17,12 @@ CREATE TABLE Teams (
 
 CREATE TABLE TeamLinks (
     TeamID TEXT PRIMARY KEY NOT NULL,
+    TeamWebsite TEXT,
     BuildThread TEXT,
     CAD TEXT,
     Code TEXT,
     Photo TEXT,
-    Video TEXT,
-    TeamWebsite TEXT
+    Video TEXT
 );
 
 CREATE TABLE TeamInfo (
@@ -67,7 +67,6 @@ CREATE TABLE FreeResponse (
 );
 
 CREATE TABLE TeamAwards (
-    rowid INTEGER PRIMARY KEY NOT NULL,
     TeamID TEXT,
     Year INTEGER,
     Award TEXT
