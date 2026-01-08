@@ -107,7 +107,7 @@ app.use("/*", async (c, next) => {
     let req = c.req.raw
     let cache = caches.default
 
-    if (req.method != 'GET') {
+    if (req.method != 'GET' || c.env.ENVIRONMENT == 'dev') {
         await next()
         return
     }
@@ -140,38 +140,47 @@ app.use("/*", async (c, next) => {
 app.get('/', async (c) => {
     return new Response(`
       <h1>Hello, World!</h1>
-      <p>You've successfully accessed the FTC Open Alliance API.</p>`,
+      <p>You've successfully accessed the Open Alliance API.</p>`,
         {headers: new Headers({"Content-Type": "text/html"})})
 })
 
-app.get('/teams', async (c) => {
-    let data = await Data.getTeamList(db)
+app.get('/teams/:program', async (c) => {
+    let data = await Data.getTeamList(c.req.param("program"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
     
-app.get('/teams/:teamnumber', async (c) => {
-    let data = await Data.getTeamData(c.req.param("teamnumber"), db)
+app.get('/teams/:program/:teamnumber', async (c) => {
+    let data = await Data.getTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
 // /teams/:teamnumber/all and /internal/formAutofillData/:teamnumber both have the same query, but the former is cached.
-app.get('/teams/:teamnumber/all', async (c) => {
-    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
+app.get('/teams/:program/:teamnumber/all', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
-app.get('/internal/formAutofillData/:teamnumber', async (c) => {
-    let data = await Data.getAllTeamData(c.req.param("teamnumber"), db)
-    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
-})
-
-app.get('/internal/getTeamStats', async (c) => {
-    let data = await Data.getTeamStats(db)
+app.get('/internal/formAutofillData/:program/:teamnumber', async (c) => {
+    let data = await Data.getAllTeamData(c.req.param("program"), c.req.param("teamnumber"), db)
     return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
 })
 
-app.get('/internal/checkTeamPII/:teamnumber', async (c) => {
-    let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamNumber IS ?)")
-    .bind(c.req.param('teamnumber'))
+app.get('/internal/getTeamStats/:program', async (c) => {
+    let data = await Data.getTeamStats(c.req.param("program"), db)
+    return new Response(data.data ? JSON.stringify(data.data) : data.error, {headers: data.contentType, status: data.statusCode})
+})
+
+app.get('/internal/checkTeamPII/:program/:teamnumber', async (c) => {
+
+    let program = c.req.param("program").toUpperCase()
+
+    if (program !== "FTC" && program !== "FRC") {
+        return new Response('Invalid program.', {status: 400})
+    }
+
+    let teamID = program + c.req.param("teamnumber")
+
+    let data = await db.prepare("SELECT EXISTS(SELECT * FROM TeamPII WHERE TeamID IS ?)")
+    .bind(teamID)
     .run()
 
     let exists = Object.values(data.results[0])[0] == 1
@@ -223,16 +232,24 @@ app.post('/internal/formSubmission', async (c) => {
     } catch (e) {
         return new Response('Input is Invalid JSON.', {status: 400})
     }
-    
-    if (isNaN(formData.TeamNumber)) {return new Response('Team Number Invalid.', {status: 400})}
 
-    await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
-        if (value.error == null) {
-            oldData = value.data
-        } else {
-            oldData = "Error getting old data: " + value.error
-        }
-    })
+    if (!RegExp("(FTC|FRC)([0-9]+)").test(formData.TeamID)) {
+        return new Response('Team ID Invalid.', {status: 400})
+    }
+
+    formData.Program = formData.Program.toUpperCase()
+
+    if (formData.TeamID != formData.Program + formData.TeamNumber) {
+        return new Response('Team ID Mismatch.', {status: 400})
+    }
+
+    // await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
+    //     if (value.error == null) {
+    //         oldData = value.data
+    //     } else {
+    //         oldData = "Error getting old data: " + value.error
+    //     }
+    // })
 
     //Serialize Arrays
     for (const key in formData) {
@@ -247,10 +264,20 @@ app.post('/internal/formSubmission', async (c) => {
 
     try {
         
-        let scoutData = await fetch(`https://api.ftcscout.org/rest/v1/teams/${formData.TeamNumber}`)
-        let teamData = await scoutData.json()
+        if (formData.Program === "FTC") {
+            let scoutData = await fetch(`https://api.ftcscout.org/rest/v1/teams/${formData.TeamNumber}`)
+            let teamData = await scoutData.json()
 
-        teamLocation = [teamData.city, teamData.state, teamData.country].join(", ")
+            teamLocation = [teamData.city, teamData.state, teamData.country].join(", ")
+        } else if (formData.Program === "FRC") {
+            let tbaData = await fetch(new Request(`https://www.thebluealliance.com/api/v3/team/frc${formData.TeamNumber}`, {
+                headers: {
+                    "X-TBA-Auth-Key": c.env.TBA_AUTH_KEY
+                }
+            }))
+            let teamData = await tbaData.json()
+            teamLocation = [teamData.city, teamData.state_prov, teamData.country].join(", ")
+        }
 
     } catch (error) {
         teamLocation = null
@@ -258,41 +285,41 @@ app.post('/internal/formSubmission', async (c) => {
 
     try {
         //Team Identification
-        await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamNumber, Location) VALUES (?, ?, ?)")
-        .bind(formData.TeamName, formData.TeamNumber, teamLocation || null)
+        await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamID, Location) VALUES (?, ?, ?)")
+        .bind(formData.TeamName, formData.TeamID, teamLocation || null)
         .run()
 
-        await db.prepare("INSERT OR IGNORE INTO TeamPII (TeamNumber, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.ContactEmail || null), (formData.ShipAddress || null))
+        await db.prepare("INSERT OR IGNORE INTO TeamPII (TeamID, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
+        .bind(formData.TeamID, (formData.ContactEmail || null), (formData.ShipAddress || null))
         .run()
-        
+
         //Team Links
-        await db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamNumber, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.TeamWebsite || null))
+        await db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamID, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(formData.TeamID, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.TeamWebsite || null))
         .run()
 
         //Team Info
-        await db.prepare("INSERT OR REPLACE INTO TeamInfo (TeamNumber, RookieYear, TeamMembers, Mentors, TeamType, MeetingHours, Budget, Workspace, Sponsors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.RookieYear || null), (formData.TeamMembers || null), (formData.Mentors || null), (formData.TeamType || null), (formData.MeetingHours || null), (formData.Budget || null), (formData.Workspace || null), (formData.Sponsors || null))
+        await db.prepare("INSERT OR REPLACE INTO TeamInfo (TeamID, RookieYear, TeamMembers, Mentors, TeamType, MeetingHours, Budget, Workspace, Sponsors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(formData.TeamID, (formData.RookieYear || null), (formData.TeamMembers || null), (formData.Mentors || null), (formData.TeamType || null), (formData.MeetingHours || null), (formData.Budget || null), (formData.Workspace || null), (formData.Sponsors || null))
         .run()
 
         //Robot Info
-        await db.prepare("INSERT OR REPLACE INTO RobotInfo (TeamNumber, Drivetrain, Materials, Products, Systems, Odometry, Sensors) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.Drivetrain || null), (formData.Materials || null), (formData.Products || null), (formData.Systems || null), (formData.Odometry || null), (formData.Sensors || null))
+        await db.prepare("INSERT OR REPLACE INTO RobotInfo (TeamID, Drivetrain, Materials, Products, Systems, Odometry, Sensors) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(formData.TeamID, (formData.Drivetrain || null), (formData.Materials || null), (formData.Products || null), (formData.Systems || null), (formData.Odometry || null), (formData.Sensors || null))
         .run()
 
         //Code Info
-        await db.prepare("INSERT OR REPLACE INTO CodeInfo (TeamNumber, CodeLang, CodeEnv, CodeTools, Vision) VALUES (?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.CodeLang || null), (formData.CodeEnv || null), (formData.CodeTools || null), (formData.Vision || null))
+        await db.prepare("INSERT OR REPLACE INTO CodeInfo (TeamID, CodeLang, CodeEnv, CodeTools, Vision) VALUES (?, ?, ?, ?, ?)")
+        .bind(formData.TeamID, (formData.CodeLang || null), (formData.CodeEnv || null), (formData.CodeTools || null), (formData.Vision || null))
         .run()
 
         //Free Response
-        await db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamNumber, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamNumber, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
+        await db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamID, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(formData.TeamID, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
 
-        return new Response(`Updated Data for team ${formData.TeamNumber}`, {status: 200})
-        
+        return new Response(`Updated Data for ${formData.TeamID}`, {status: 200})
+
     } catch (e) {
         return new Response('Internal Error while Updating Data.', {status: 500})
     }

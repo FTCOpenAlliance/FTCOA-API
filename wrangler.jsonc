@@ -1,6 +1,6 @@
 {
     "$schema": "./node_modules/wrangler/config-schema.json",
-    "name": "ftcoa-api",
+    "name": "theopenalliance-api",
     "main": "src/index.js",
     "workers_dev": true,
     "compatibility_date": "2025-09-15",
@@ -8,7 +8,7 @@
         "nodejs_compat",
     ],
     "vars": {
-        "CORS_ORIGIN": "https://ftcopenalliance.org",
+        "CORS_ORIGIN": "https://theopenalliance.org",
         "ENVIRONMENT": "prod"
     },
     "observability": {
