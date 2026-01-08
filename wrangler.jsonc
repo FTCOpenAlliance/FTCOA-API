@@ -8,7 +8,7 @@
         "nodejs_compat",
     ],
     "vars": {
-        "CORS_ORIGIN": "https://ftcopenalliance.org",
+        "CORS_ORIGIN": "https://theopenalliance.org",
         "ENVIRONMENT": "prod"
     },
     "observability": {
