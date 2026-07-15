@@ -3,15 +3,18 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
-		"start": "wrangler dev --env dev"
+		"start": "wrangler dev --env dev",
+		"remote": "wrangler dev --env dev --remote"
 	},
 	"devDependencies": {
+		"@types/node": "^25.3.2",
 		"wrangler": "^4.24.0"
 	},
 	"dependencies": {
 		"@hono-rate-limiter/cloudflare": "^0.2.2",
-		"googleapis": "^166.0.0",
 		"hono": "^4.9.2",
+		"js-base64": "^3.7.8",
+		"jsonwebtoken": "^9.0.3",
 		"tslib": "^2.8.1"
 	}
 }

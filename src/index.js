@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import Data from './data.js'
 import Constants from "./config.ts"
+import Chat from './messages.ts'
 
 const app = new Hono()
 
@@ -243,13 +244,13 @@ app.post('/internal/formSubmission', async (c) => {
         return new Response('Team ID Mismatch.', {status: 400})
     }
 
-    // await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
-    //     if (value.error == null) {
-    //         oldData = value.data
-    //     } else {
-    //         oldData = "Error getting old data: " + value.error
-    //     }
-    // })
+    await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {
+        if (value.error == null) {
+            oldData = value.data
+        } else {
+            oldData = "Error getting old data: " + value.error
+        }
+    })
 
     //Serialize Arrays
     for (const key in formData) {
@@ -318,6 +319,15 @@ app.post('/internal/formSubmission', async (c) => {
         .bind(formData.TeamID, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
         .run()
 
+        Chat.sendFormSubmitNotification({
+            devEnvironment: process.env.ENVIRONMENT === "dev",
+            teamNumber: formData.TeamNumber,
+            prevData: oldData,
+            newData: JSON.stringify(formData),
+            timestamp: Date.now(),
+            sourceIP: c.req.header("cf-connecting-ip")
+        })
+
         return new Response(`Updated Data for ${formData.TeamID}`, {status: 200})
 
     } catch (e) {
@@ -325,6 +335,19 @@ app.post('/internal/formSubmission', async (c) => {
     }
     
 })
+
+app.get("/test", async () => {
+    await Chat.sendFormSubmitNotification({
+        devEnvironment: true,
+        teamNumber: 1234,
+        prevData: "{'example': 'thing1'}",
+        newData: "{'example':'thing2'}",
+        timestamp: Date.now(),
+        sourceIP: "127.0.0.1"
+    })
+
+    return new Response('Notification sent', {status: 200});
+});
 
 export default {
     async fetch(request, env, ctx) {
