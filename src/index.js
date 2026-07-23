@@ -235,7 +235,7 @@ app.post('/internal/formSubmission', async (c) => {
     }
 
     //Check Team ID Format, and match with Program + Team Number
-    if (!RegExp("(FTC|FRC)([0-9]+)").test(formData.TeamID)) {
+    if (!/^(FTC|FRC)$/.test(formData.Program) ||  !/^[0-9]{1,5}$/.test(formData.TeamNumber)) {
         return new Response('Team ID Invalid.', {status: 400})
     }
 
@@ -249,15 +249,16 @@ app.post('/internal/formSubmission', async (c) => {
 
     if (!formData.AuthCode) { return new Response('Authentication not provided.', {status: 403}) }
 
-    if (!RegExp("^[A-Za-z0-9_-]+$").test(formData.AuthCode)) {
+    if (!/^[A-Za-z0-9_-]{8}$/.test(formData.AuthCode)) {
         return new Response('Authentication code invalid.', {status: 403})
     }
 
     formData.AuthCode = formData.AuthCode.replace(/-/g, '+').replace(/_/g, '/')
 
-    const computedHash = (await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${formData.TeamID}${c.env.FORM_CODE_SECRET}`))).slice(0, 6)
-
-    const recievedHash = Uint8Array.fromBase64(formData.AuthCode).buffer
+    const fullDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${formData.TeamID}${c.env.FORM_CODE_SECRET}`))
+    const computedHash = new Uint8Array(fullDigest, 0, 6)
+    
+    const recievedHash = Uint8Array.fromBase64(formData.AuthCode)
 
     if (computedHash.byteLength !== recievedHash.byteLength || !crypto.subtle.timingSafeEqual(computedHash, recievedHash)) {
         return new Response('Authentication failed.', {status: 403})
