@@ -227,13 +227,15 @@ app.post('/internal/formSubmission', async (c) => {
     let teamLocation
     let oldData
 
+    //Check for valid JSON
     try {
         formData = await c.req.json()
     } catch (e) {
         return new Response('Input is Invalid JSON.', {status: 400})
     }
 
-    if (!RegExp("(FTC|FRC)([0-9]+)").test(formData.TeamID)) {
+    //Check Team ID Format, and match with Program + Team Number
+    if (!/^(FTC|FRC)$/.test(formData.Program) ||  !/^[0-9]{1,5}$/.test(formData.TeamNumber)) {
         return new Response('Team ID Invalid.', {status: 400})
     }
 
@@ -241,6 +243,25 @@ app.post('/internal/formSubmission', async (c) => {
 
     if (formData.TeamID != formData.Program + formData.TeamNumber) {
         return new Response('Team ID Mismatch.', {status: 400})
+    }
+
+    //Check verification code validity
+
+    if (!formData.AuthCode) { return new Response('Authentication not provided.', {status: 403}) }
+
+    if (!/^[A-Za-z0-9_-]{8}$/.test(formData.AuthCode)) {
+        return new Response('Authentication code invalid.', {status: 403})
+    }
+
+    formData.AuthCode = formData.AuthCode.replace(/-/g, '+').replace(/_/g, '/')
+
+    const fullDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${formData.TeamID}${c.env.FORM_CODE_SECRET}`))
+    const computedHash = new Uint8Array(fullDigest, 0, 6)
+    
+    const recievedHash = Uint8Array.fromBase64(formData.AuthCode)
+
+    if (computedHash.byteLength !== recievedHash.byteLength || !crypto.subtle.timingSafeEqual(computedHash, recievedHash)) {
+        return new Response('Authentication failed.', {status: 403})
     }
 
     // await Data.getAllTeamData(formData.TeamNumber, db).then((value) => {

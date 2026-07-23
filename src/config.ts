@@ -24,7 +24,7 @@ export default abstract class Constants {
     public static rateLimitMessage = "You have sent too many requests. Please try again later."
 
     public static publicWebFlags = [
-        "BannerHTML"
+        "BannerMD"
     ]
 
     public static notificationDBLink = "https://dash.cloudflare.com/742c723e9d656d02b2e77347b3b05cfd/workers/d1/databases/47a29a14-1352-4792-b101-8dd8f9a3d245/studio"
