@@ -305,39 +305,35 @@ app.post('/internal/formSubmission', async (c) => {
     }
 
     try {
-        //Team Identification
-        await db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamID, Location) VALUES (?, ?, ?)")
-        .bind(formData.TeamName, formData.TeamID, teamLocation || null)
-        .run()
 
-        await db.prepare("INSERT OR IGNORE INTO TeamPII (TeamID, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
-        .bind(formData.TeamID, (formData.ContactEmail || null), (formData.ShipAddress || null))
-        .run()
+        await db.batch([
+            //Team Identification
+            db.prepare("INSERT OR REPLACE INTO Teams (TeamName, TeamID, Location) VALUES (?, ?, ?)")
+            .bind(formData.TeamName, formData.TeamID, teamLocation || null),
 
-        //Team Links
-        await db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamID, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamID, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.TeamWebsite || null))
-        .run()
+            db.prepare("INSERT OR IGNORE INTO TeamPII (TeamID, ContactEmail, ShipAddress) VALUES (?, ?, ?)")
+            .bind(formData.TeamID, (formData.ContactEmail || null), (formData.ShipAddress || null)),
 
-        //Team Info
-        await db.prepare("INSERT OR REPLACE INTO TeamInfo (TeamID, RookieYear, TeamMembers, Mentors, TeamType, MeetingHours, Budget, Workspace, Sponsors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamID, (formData.RookieYear || null), (formData.TeamMembers || null), (formData.Mentors || null), (formData.TeamType || null), (formData.MeetingHours || null), (formData.Budget || null), (formData.Workspace || null), (formData.Sponsors || null))
-        .run()
+            //Team Links
+            db.prepare("INSERT OR REPLACE INTO TeamLinks (TeamID, BuildThread, CAD, Code, Photo, Video, TeamWebsite) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(formData.TeamID, (formData.BuildThread || null), (formData.CAD || null), (formData.Code || null), (formData.Photo || null), (formData.Video || null), (formData.TeamWebsite || null)),
 
-        //Robot Info
-        await db.prepare("INSERT OR REPLACE INTO RobotInfo (TeamID, Drivetrain, Materials, Products, Systems, Odometry, Sensors) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamID, (formData.Drivetrain || null), (formData.Materials || null), (formData.Products || null), (formData.Systems || null), (formData.Odometry || null), (formData.Sensors || null))
-        .run()
+            //Team Info
+            db.prepare("INSERT OR REPLACE INTO TeamInfo (TeamID, RookieYear, TeamMembers, Mentors, TeamType, MeetingHours, Budget, Workspace, Sponsors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .bind(formData.TeamID, (formData.RookieYear || null), (formData.TeamMembers || null), (formData.Mentors || null), (formData.TeamType || null), (formData.MeetingHours || null), (formData.Budget || null), (formData.Workspace || null), (formData.Sponsors || null)),
 
-        //Code Info
-        await db.prepare("INSERT OR REPLACE INTO CodeInfo (TeamID, CodeLang, CodeEnv, CodeTools, Vision) VALUES (?, ?, ?, ?, ?)")
-        .bind(formData.TeamID, (formData.CodeLang || null), (formData.CodeEnv || null), (formData.CodeTools || null), (formData.Vision || null))
-        .run()
+            //Robot Info
+            db.prepare("INSERT OR REPLACE INTO RobotInfo (TeamID, Drivetrain, Materials, Products, Systems, Odometry, Sensors) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(formData.TeamID, (formData.Drivetrain || null), (formData.Materials || null), (formData.Products || null), (formData.Systems || null), (formData.Odometry || null), (formData.Sensors || null)),
 
-        //Free Response
-        await db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamID, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(formData.TeamID, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null))
-        .run()
+            //Code Info
+            db.prepare("INSERT OR REPLACE INTO CodeInfo (TeamID, CodeLang, CodeEnv, CodeTools, Vision) VALUES (?, ?, ?, ?, ?)")
+            .bind(formData.TeamID, (formData.CodeLang || null), (formData.CodeEnv || null), (formData.CodeTools || null), (formData.Vision || null)),
+
+            //Free Response
+            db.prepare("INSERT OR REPLACE INTO FreeResponse (TeamID, UniqueFeatures, Outreach, CodeAdvantage, Competitions, TeamStrategy, GameStrategy, DesignProcess) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+            .bind(formData.TeamID, (formData.UniqueFeatures || null), (formData.Outreach || null), (formData.CodeAdvantage || null), (formData.Competitions || null), (formData.TeamStrategy || null), (formData.GameStrategy || null), (formData.DesignProcess || null)),
+        ])
 
         return new Response(`Updated Data for ${formData.TeamID}`, {status: 200})
 
